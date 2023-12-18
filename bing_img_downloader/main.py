@@ -144,7 +144,7 @@ class BingCreatorImageDownload:
                     logging.info(f"Downloading image from: {image_dict['image_link']}")
                     if response.status == 200:
                         filename_image_prompt = await BingCreatorImageUtility.slugify(image_dict['image_prompt'])
-                        if config['filename']['use_local_time_zone']:
+                        if CONFIG['filename']['use_local_time_zone']:
                             creation_date = dateutil_parser.parse(image_dict['creation_date']) \
                                 .astimezone() \
                                 .strftime('%Y-%m-%dT%H%M%z')
@@ -156,7 +156,7 @@ class BingCreatorImageDownload:
                             'prompt': filename_image_prompt[:50],
                             'sep': '_'
                         }
-                        template = string.Template(config['filename']['filename_pattern'])
+                        template = string.Template(CONFIG['filename']['filename_pattern'])
                         file_name_formatted = template.safe_substitute(file_name_substitute_dict)
                         filename = f"{temp_dir}{os.sep}{file_name_formatted}.jpg"
 
@@ -176,7 +176,7 @@ class BingCreatorImageDownload:
                                 filename_image_prompt = await BingCreatorImageUtility.slugify(
                                     image_dict['image_prompt']
                                 )
-                                if config['filename']['use_local_time_zone']:
+                                if CONFIG['filename']['use_local_time_zone']:
                                     creation_date = dateutil_parser.parse(image_dict['creation_date']) \
                                         .astimezone() \
                                         .strftime('%Y-%m-%dT%H%M%z')
@@ -188,7 +188,7 @@ class BingCreatorImageDownload:
                                     'prompt': filename_image_prompt[:50],
                                     'sep': '_'
                                 }
-                                template = string.Template(config['filename']['filename_pattern'])
+                                template = string.Template(CONFIG['filename']['filename_pattern'])
                                 file_name_formatted = template.safe_substitute(file_name_substitute_dict)
                                 filename = f"{temp_dir}{os.sep}{file_name_formatted}_T.jpg"
 
@@ -364,7 +364,7 @@ class BingCreatorImageValidator:
         :return: Whether the collection should be added or not.
         """
         if 'collectionPage' in _collection and 'items' in _collection['collectionPage']:
-            collections_to_include = config['collection']['collections_to_include']
+            collections_to_include = CONFIG['collection']['collections_to_include']
             if len(collections_to_include) == 0:
                 return True
             else:
@@ -539,7 +539,7 @@ def init_logging() -> None:
     logging.getLogger("asyncio").setLevel(logging.WARNING)
     logging.getLogger("aiohttp_retry").setLevel(logging.WARNING)
 
-    log_level = logging.DEBUG if config['debug']['debug'] else logging.INFO
+    log_level = logging.DEBUG if CONFIG['debug']['debug'] else logging.INFO
     log_format = "%(asctime)s %(levelname)s %(message)s"
     logging.basicConfig(
         format=log_format,
@@ -547,9 +547,9 @@ def init_logging() -> None:
         handlers=[StreamHandler(sys.stdout)]
     )
 
-    if config['debug']['use_log_file']:
+    if CONFIG['debug']['use_log_file']:
         file_handler = RotatingFileHandler(
-            config['debug']['debug_filename'],
+            CONFIG['debug']['debug_filename'],
             maxBytes=1000000,
             backupCount=1)
         file_handler.setLevel(log_level)
@@ -557,9 +557,16 @@ def init_logging() -> None:
         logging.getLogger().addHandler(file_handler)
 
 
-if __name__ == "__main__":
+# better to pass this in instead of being global, but I don't want to modify
+# the code right now
+CONFIG = {}
+
+def dl_bing_imgs():
+    global CONFIG
     load_dotenv()
-    with open('config.toml', 'rb') as cfg_file:
-        config = tomllib.load(cfg_file)
+    from pathlib import Path
+    cfg_path = Path(__file__).parent / "config" / "config.toml"
+    with open(cfg_path, 'rb') as cfg_file:
+        CONFIG = tomllib.load(cfg_file)
     init_logging()
     asyncio.run(main())
