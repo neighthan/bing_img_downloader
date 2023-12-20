@@ -43,7 +43,7 @@ class BingCreatorImageDownload:
         self.__image_data = []
         self.image_count = 0
 
-    async def run(self):
+    async def run(self, output_dir: str):
         """
         High level method that serves as the entry point.
         :return: None
@@ -51,7 +51,7 @@ class BingCreatorImageDownload:
         self.__image_data = self.__gather_image_data()
         self.image_count = len(self.__image_data)
         await self.__set_creation_dates()
-        await self.__download_and_zip_images()
+        return await self.__download_and_zip_images(output_dir)
 
     @staticmethod
     def __gather_image_data() -> list:
@@ -109,25 +109,26 @@ class BingCreatorImageDownload:
             raise Exception(f"Fetching collection failed with Error code"
                             f"{response.status_code}: {response.reason};{response.text}")
 
-    async def __download_and_zip_images(self) -> None:
+    async def __download_and_zip_images(self, output_dir: str) -> Sequence[str]:
         """
         Downloads all images from the gathered image data and zips them.
         :return: None
         """
         logging.info(f"Starting download of {len(self.__image_data)} images.")
-        out_dir = Path(f"bing_images_{date.today()}")
+        out_dir = Path(output_dir)
         out_dir.mkdir(exist_ok=True, parents=True)
         tasks = [
             self.__download_and_save_image(image_dict, out_dir)
             for image_dict
             in self.__image_data
         ]
-        await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+        return [str(file) for file, _ in results]
 
     @staticmethod
     async def __download_and_save_image(
             image_dict: dict,
-            out_dir: Path) -> tuple:
+            out_dir: Path) -> tuple[Path, dict]:
         """
         Downloads an image using the image link in the supplied dictionary.
         :param image_dict: Dictionary containing link, prompt collection name and thumbnail link of an image.
@@ -515,18 +516,19 @@ class BingCreatorCollectionImport:
         return thumbnail_base64
 
 
-async def main() -> None:
+async def main(output_dir: str) -> Sequence[str]:
     """
     Entry point for the program. Calls all high level functionality.
     :return: None
     """
     start = time.time()
     bing_creator_image_download = BingCreatorImageDownload()
-    await bing_creator_image_download.run()
+    fnames = await bing_creator_image_download.run(output_dir)
     end = time.time()
     elapsed = end - start
     logging.info(f"Finished downloading {bing_creator_image_download.image_count} images in"
                  f" {round(elapsed, 2)} seconds.\n")
+    return fnames
 
 
 def init_logging() -> None:
@@ -563,10 +565,13 @@ CONFIG = {}
 
 def dl_bing_imgs(
     cookie: str,
+    output_dir: str="",
     collections: Sequence[str]=(),
     filename_pattern: str="$date$sep$index$sep$prompt",
     use_local_time_zone: bool=False,
-):
+) -> Sequence[str]:
+    if not output_dir:
+        output_dir = f"bing_images_{date.today()}"
     global CONFIG
     CONFIG["filename"] = {
         "filename_pattern": filename_pattern,
@@ -583,10 +588,10 @@ def dl_bing_imgs(
         "debug_filename": "bing_image_creator.log",
     }
 
-    os.environ["COOKIE"] = cookie
+    os.environ["COOKIE"] = cookie.strip()
 
     init_logging()
-    asyncio.run(main())
+    return asyncio.run(main(output_dir))
 
 
 def dl_bing_imgs_cli():
@@ -597,4 +602,4 @@ def dl_bing_imgs_cli():
     with open(cfg_path, 'rb') as cfg_file:
         CONFIG = tomllib.load(cfg_file)
     init_logging()
-    asyncio.run(main())
+    asyncio.run(main(f"bing_images_{date.today()}"))
