@@ -9,9 +9,10 @@ import string
 import sys
 import time
 import tomllib
-import zipfile
 from datetime import date
 from datetime import timezone
+from pathlib import Path
+from typing import Sequence
 from urllib.parse import unquote
 
 import aiofiles
@@ -114,23 +115,19 @@ class BingCreatorImageDownload:
         :return: None
         """
         logging.info(f"Starting download of {len(self.__image_data)} images.")
-        with zipfile.ZipFile(f"bing_images_{date.today()}.zip", "w") as zip_file:
-            async with aiofiles.tempfile.TemporaryDirectory('wb') as temp_dir:
-                tasks = [
-                    self.__download_and_save_image(image_dict, temp_dir)
-                    for image_dict
-                    in self.__image_data
-                ]
-                file_names = await asyncio.gather(*tasks)
-                file_names = list(filter(None, file_names))
-                for file_name, collection_name in file_names:
-                    file_name: str
-                    zip_file.write(file_name, arcname=os.path.join(collection_name, os.path.basename(file_name)))
+        out_dir = Path(f"bing_images_{date.today()}")
+        out_dir.mkdir(exist_ok=True, parents=True)
+        tasks = [
+            self.__download_and_save_image(image_dict, out_dir)
+            for image_dict
+            in self.__image_data
+        ]
+        await asyncio.gather(*tasks)
 
     @staticmethod
     async def __download_and_save_image(
             image_dict: dict,
-            temp_dir: aiofiles.tempfile.TemporaryDirectory) -> tuple:
+            out_dir: Path) -> tuple:
         """
         Downloads an image using the image link in the supplied dictionary.
         :param image_dict: Dictionary containing link, prompt collection name and thumbnail link of an image.
@@ -158,12 +155,14 @@ class BingCreatorImageDownload:
                         }
                         template = string.Template(CONFIG['filename']['filename_pattern'])
                         file_name_formatted = template.safe_substitute(file_name_substitute_dict)
-                        filename = f"{temp_dir}{os.sep}{file_name_formatted}.jpg"
+                        img_dir = out_dir / image_dict['collection_name']
+                        img_dir.mkdir(exist_ok=True)
+                        filename = img_dir / f"{file_name_formatted}.jpg"
 
                         async with aiofiles.open(filename, "wb") as f:
                             await f.write(await response.read())
 
-                        await BingCreatorImageUtility.add_exif_metadata(image_dict, filename)
+                        await BingCreatorImageUtility.add_exif_metadata(image_dict, str(filename))
 
                         return filename, image_dict['collection_name']
                     else:
@@ -561,11 +560,40 @@ def init_logging() -> None:
 # the code right now
 CONFIG = {}
 
-def dl_bing_imgs():
+
+def dl_bing_imgs(
+    cookie: str,
+    collections: Sequence[str]=(),
+    filename_pattern: str="$date$sep$index$sep$prompt",
+    use_local_time_zone: bool=False,
+):
     global CONFIG
-    load_dotenv()
-    from pathlib import Path
-    cfg_path = Path(__file__).parent / "config" / "config.toml"
+    CONFIG["filename"] = {
+        "filename_pattern": filename_pattern,
+        "use_local_time_zone": use_local_time_zone,
+    }
+
+    CONFIG["collection"] = {
+        "collections_to_include": collections,
+    }
+
+    CONFIG["debug"] = {
+        "debug": False,
+        "use_log_file": False,
+        "debug_filename": "bing_image_creator.log",
+    }
+
+    os.environ["COOKIE"] = cookie
+
+    init_logging()
+    asyncio.run(main())
+
+
+def dl_bing_imgs_cli():
+    global CONFIG
+    cfg_dir = Path(__file__).parent / "config"
+    load_dotenv(cfg_dir / ".env")
+    cfg_path = cfg_dir / "config.toml"
     with open(cfg_path, 'rb') as cfg_file:
         CONFIG = tomllib.load(cfg_file)
     init_logging()

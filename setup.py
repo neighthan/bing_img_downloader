@@ -7,13 +7,12 @@ setup(
     description="",
         entry_points={
         "console_scripts": [
-            "dl_bing_imgs = bing_img_downloader.main:dl_bing_imgs",
+            "dl_bing_imgs = bing_img_downloader.main:dl_bing_imgs_cli",
         ],
     },
     data_files=[
         ("config", ["config/config.toml", "config/.env"])
     ],
-    # scripts=["my_project/my_script.py"],
     install_requires=[
         "aiofiles~=23.2.1",
         "aiohttp~=3.9.0",
